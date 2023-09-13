@@ -79,6 +79,13 @@ export const restoreUsers = async (cognito: CognitoISP, UserPoolId: string, file
     const readStream = fs.createReadStream(file);
     const parser = JSONStream.parse();
 
+    // added restore.json
+    !fs.existsSync("./") && fs.mkdirSync("./")
+    const fileRestore = path.join("./", `${UserPoolId}_restore.json`)
+    const writeStream = fs.createWriteStream(fileRestore);
+    const stringify = JSONStream.stringify();
+    stringify.pipe(writeStream);
+
     parser.on('data', async (data: any[]) => {
         for (let user of data) {
             // filter out non-mutable attributes
@@ -119,7 +126,8 @@ export const restoreUsers = async (cognito: CognitoISP, UserPoolId: string, file
             }
             const wrapped = limiter.wrap(async () => cognito.adminCreateUser(params).promise());
             try {
-               await wrapped();
+               const result = await wrapped();
+               stringify.write(result);
             } catch (e) {
               if (e.code === 'UsernameExistsException') {
                   console.log(`Looks like user ${user.Username} already exists, ignoring.`)
@@ -128,6 +136,12 @@ export const restoreUsers = async (cognito: CognitoISP, UserPoolId: string, file
               }
             }
         };
+
+         
+        stringify.end();
+        stringify.on('end', () => {
+            writeStream.end();
+        });
     });
 
     readStream.pipe(parser);
